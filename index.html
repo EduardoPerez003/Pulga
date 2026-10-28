@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Pulga</title>
+<style>
+  :root { --pelo:#f3d3a2; --pelo2:#dc9a5c; --tinta:#2a1410; --rosa:#e0527a; --menta:#1d8a8a; --sol:#ffc933; }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; background: var(--pelo2); color: var(--tinta);
+    font-family: "Trebuchet MS", "Segoe UI", system-ui, sans-serif; overflow: hidden; touch-action: none; }
+  #juego { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
+  #marcador { position: fixed; top: 0; left: 0; right: 0; display: flex; justify-content: space-between;
+    padding: calc(env(safe-area-inset-top, 0px) + 12px) 18px 0; font-size: 1.3rem; font-weight: bold; pointer-events: none; }
+  #pantalla { position: fixed; inset: 0; display: flex; flex-direction: column; align-items: center;
+    justify-content: center; text-align: center; padding: 24px; background: rgba(243,211,162,.93); }
+  #pantalla.oculta { display: none; }
+  h1 { font-size: clamp(3rem, 14vw, 6rem); margin: 0; line-height: 1; letter-spacing: -.02em; }
+  p { max-width: 28em; line-height: 1.5; margin: .6em 0; font-size: 1.05rem; }
+  button { margin-top: 1em; padding: .8em 2em; font: inherit; font-size: 1.2rem; font-weight: bold; color: #fff;
+    background: var(--tinta); border: 0; border-radius: 999px; cursor: pointer; }
+  button:hover { background: #4a2a22; }
+  button:focus-visible { outline: 3px solid var(--rosa); outline-offset: 3px; }
+</style>
+</head>
+<body>
+<canvas id="juego"></canvas>
+<div id="marcador"><span id="puntos">0</span><span id="record">Récord: 0</span></div>
+<div id="pantalla">
+  <h1 id="titulo">Pulga</h1>
+  <p id="texto">Eres una pulga que vive en un perro gigante y quiere llegar hasta su cabeza. Salta sola: tú solo la guías a izquierda y derecha con el ratón, el dedo o las flechas.</p>
+  <p>Cuidado con los mechones rosas, que se deshacen. Los amarillos te lanzan por los aires. Y si ves un hueso, ¡cógelo!</p>
+  <button id="boton">Saltar</button>
+</div>
+<script>
+(() => {
+  const lienzo = document.getElementById('juego'), c = lienzo.getContext('2d');
+  const $ = id => document.getElementById(id);
+  const G = 1500, SALTO = 790, MUELLE = 1250;
+  let W, H, p, pl, hu, altura, extra, record = 0, jugando = false, ultimo = 0, objX = null, ultimoTipo = 0, tecla = {};
+  const pelos = Array.from({ length: 60 }, () => ({ x: Math.random(), y: Math.random(), l: 8 + Math.random() * 16 }));
+
+  try { record = +localStorage.getItem('pulgaRecord') || 0; } catch (e) {}
+  $('record').textContent = 'Récord: ' + record;
+
+  function ajustar() {
+    const d = window.devicePixelRatio || 1;
+    W = innerWidth; H = innerHeight;
+    lienzo.width = W * d; lienzo.height = H * d;
+    c.setTransform(d, 0, 0, d, 0, 0);
+  }
+  addEventListener('resize', ajustar); ajustar();
+
+  const puntos = () => Math.floor(altura / 10) + extra * 25;
+
+  function crear(y) {
+    const n = puntos(), r = Math.random();
+    let t = 0;
+    if (r < .08) t = 3;
+    else if (r < .08 + Math.min(.05 + n / 1500, .3)) t = 1;
+    else if (r < .08 + Math.min(.05 + n / 1500, .3) + Math.min(.05 + n / 1200, .25) && ultimoTipo !== 2) t = 2;
+    ultimoTipo = t;
+    const w = Math.max(80 - n / 40, 54);
+    const o = { x: Math.random() * (W - w), y, w, t, vx: t === 1 ? (Math.random() < .5 ? -1 : 1) * (60 + Math.random() * 60) : 0, cae: 0 };
+    pl.push(o);
+    if (Math.random() < .14 && t !== 3) hu.push({ x: o.x + w / 2, y: y - 34 });
+  }
+  const hueco = () => 62 + Math.random() * (48 + Math.min(puntos() / 8, 38));
+
+  function empezar() {
+    pl = []; hu = []; altura = 0; extra = 0; ultimoTipo = 0;
+    p = { x: W / 2, y: H - 110, vy: -SALTO, r: 15 };
+    pl.push({ x: W / 2 - 45, y: H - 60, w: 90, t: 0, vx: 0, cae: 0 });
+    let y = H - 60; while (y > -80) { y -= hueco(); crear(y); }
+    jugando = true; $('pantalla').classList.add('oculta'); marcador();
+    ultimo = performance.now(); requestAnimationFrame(bucle);
+  }
+
+  function marcador() {
+    $('puntos').textContent = puntos();
+    $('record').textContent = 'Récord: ' + record;
+  }
+
+  function terminar() {
+    jugando = false;
+    const n = puntos(), nuevo = n > record;
+    if (nuevo) { record = n; try { localStorage.setItem('pulgaRecord', record); } catch (e) {} }
+    marcador();
+    $('titulo').textContent = n;
+    $('texto').textContent = nuevo ? '¡Nuevo récord! Has subido más que nunca por el lomo del perro.' : 'Te has caído del perro. Tu récord es ' + record + '. ¿Subes más esta vez?';
+    $('pantalla').querySelectorAll('p')[1].textContent = '';
+    $('boton').textContent = 'Otra vez';
+    $('pantalla').classList.remove('oculta'); $('boton').focus();
+  }
+
+  addEventListener('pointermove', e => { objX = e.clientX; });
+  addEventListener('pointerdown', e => { objX = e.clientX; });
+  addEventListener('keydown', e => { tecla[e.key] = true; objX = null; });
+  addEventListener('keyup', e => { tecla[e.key] = false; });
+  $('boton').addEventListener('click', empezar);
+
+  function bucle(t) {
+    if (!jugando) return;
+    const dt = Math.min((t - ultimo) / 1000, .04); ultimo = t;
+    const antes = p.y;
+
+    if (tecla.ArrowLeft || tecla.a) p.x -= 430 * dt;
+    else if (tecla.ArrowRight || tecla.d) p.x += 430 * dt;
+    else if (objX !== null) p.x += (objX - p.x) * Math.min(1, 9 * dt);
+    if (p.x < -p.r) p.x = W + p.r; else if (p.x > W + p.r) p.x = -p.r;
+
+    p.vy += G * dt; p.y += p.vy * dt;
+
+    for (const o of pl) {
+      if (o.t === 1) { o.x += o.vx * dt; if (o.x < 0 || o.x + o.w > W) o.vx *= -1; }
+      if (o.cae) { o.cae += dt * 900; o.y += o.cae * dt; continue; }
+      if (p.vy > 0 && p.x + p.r * .7 > o.x && p.x - p.r * .7 < o.x + o.w && antes + p.r <= o.y + 4 && p.y + p.r >= o.y) {
+        p.vy = o.t === 3 ? -MUELLE : -SALTO;
+        if (o.t === 2) o.cae = 1;
+      }
+    }
+    for (const h of hu) if (!h.hecho && Math.hypot(h.x - p.x, h.y - p.y) < 30) { h.hecho = true; extra++; }
+
+    let d = 0;
+    if (p.y < H * .4) { d = H * .4 - p.y; p.y += d; altura += d; for (const o of pl) o.y += d; for (const h of hu) h.y += d; }
+    pl = pl.filter(o => o.y < H + 40); hu = hu.filter(h => !h.hecho && h.y < H + 40);
+    let alto = Math.min(...pl.map(o => o.y));
+    while (alto > -60) { alto -= hueco(); crear(alto); }
+
+    marcador();
+    if (p.y > H + 60) return terminar();
+    dibujar(d);
+    requestAnimationFrame(bucle);
+  }
+
+  function dibujar(d) {
+    const f = c.createLinearGradient(0, 0, 0, H); f.addColorStop(0, '#f6dfb8'); f.addColorStop(1, '#dc9a5c');
+    c.fillStyle = f; c.fillRect(0, 0, W, H);
+    c.strokeStyle = 'rgba(138,75,42,.35)'; c.lineWidth = 2; c.lineCap = 'round';
+    for (const s of pelos) {
+      s.y += d * .4 / H; if (s.y > 1) s.y -= 1;
+      c.beginPath(); c.moveTo(s.x * W, s.y * H); c.lineTo(s.x * W + 5, s.y * H + s.l); c.stroke();
+    }
+    for (const o of pl) {
+      c.fillStyle = o.t === 1 ? '#1d8a8a' : o.t === 2 ? '#e0527a' : o.t === 3 ? '#ffc933' : '#8a4b2a';
+      c.beginPath(); c.roundRect(o.x, o.y, o.w, 14, 7); c.fill();
+      c.fillStyle = 'rgba(255,255,255,.25)'; c.fillRect(o.x + 8, o.y + 3, o.w - 16, 3);
+      if (o.t === 3) { c.fillStyle = '#2a1410'; c.fillRect(o.x + o.w / 2 - 8, o.y - 6, 16, 6); }
+    }
+    c.font = '30px serif'; c.textAlign = 'center'; c.textBaseline = 'middle';
+    for (const h of hu) c.fillText('🦴', h.x, h.y);
+    const est = Math.max(-6, Math.min(8, -p.vy / 120));
+    c.strokeStyle = '#2a1410'; c.lineWidth = 3;
+    c.beginPath(); c.moveTo(p.x - 8, p.y + 8); c.lineTo(p.x - 14, p.y + 16 + est); c.moveTo(p.x + 8, p.y + 8); c.lineTo(p.x + 14, p.y + 16 + est); c.stroke();
+    c.fillStyle = '#2a1410'; c.beginPath(); c.ellipse(p.x, p.y, p.r - est * .2, p.r + est * .3, 0, 0, 7); c.fill();
+    c.fillStyle = '#fff'; c.beginPath(); c.arc(p.x - 5, p.y - 4, 4.5, 0, 7); c.arc(p.x + 5, p.y - 4, 4.5, 0, 7); c.fill();
+    c.fillStyle = '#2a1410'; c.beginPath(); c.arc(p.x - 5, p.y - 3, 2, 0, 7); c.arc(p.x + 5, p.y - 3, 2, 0, 7); c.fill();
+  }
+
+  empezarVacio();
+  function empezarVacio() { pl = []; hu = []; p = { x: W / 2, y: H / 2, vy: 0, r: 15 }; altura = 0; extra = 0; dibujar(0); }
+})();
+</script>
+</body>
+</html>
