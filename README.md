@@ -25,7 +25,7 @@ A medida que ganas altura, los mechones se hacen más pequeños, aparecen más s
 
 Abre el enlace del juego en tu navegador y pulsa el botón "Saltar". No hace falta instalar nada.
 
-Sobre este proyecto
+## Sobre este proyecto
 
 Este juego se ha creado de manera educativa con la ayuda de una inteligencia artificial . Ha servido para aprender cómo se puede diseñar y construir un juego sencillo con esta herramienta.
 
